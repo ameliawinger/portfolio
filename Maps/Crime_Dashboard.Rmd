@@ -1,0 +1,149 @@
+---
+title: "Crime Dashboard"
+author: "Amelia Winger"
+date: "6/17/2021"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Call libraries
+```{r, include=FALSE}
+library(tidyverse)
+library(rvest)
+library(dplyr)
+library(lubridate)
+library(tidygeocoder)
+library(ggplot2)
+library(stringr)
+library(readr)
+library(leaflet)
+library(htmltools)
+library(htmlwidgets)
+```
+# Store URL and selector information for scraping
+```{r}
+#Store/read information for page url and selectors
+crime_url <- "https://safety.temple.edu/reports-logs/crime-log"
+crime <- rvest::read_html(crime_url)
+
+selector_base <- "//td[contains(@class, 'views-field views-field-field-"
+selector_ids <- c("crime-classification", 
+                  "incident-number", 
+                  "reported", 
+                  "occurred", 
+                  "address", 
+                  "building", 
+                  "disposition")
+for(i in selector_ids) {
+  selectors <- paste(selector_base, selector_ids, "')]", sep="")
+}
+```
+# Scrape crime log and save results in data frame
+```{r}
+selectors <- lapply(selectors, function(x) {
+  crime %>% 
+    rvest::html_nodes('body') %>% 
+    xml2::xml_find_all(x) %>% 
+    rvest::html_text(trim = TRUE)
+})
+
+##Save data scraped today in data frame
+crimelog_today <- as.data.frame(do.call(cbind, selectors)) %>% 
+  rename(Classification = V1,
+         Incident_Number = V2,
+         DateTime_Reported = V3,
+         DateTime_Occurred = V4,
+         Location = V5,
+         Building = V6,
+         Disposition = V7)
+```
+# Clean data scraped today and save/export to TTN's full crime log
+```{r}
+## Clean addresses
+addresses <- sub("Directions", "", crimelog_today$Location)
+addresses <- sub("\n", " ", addresses)
+addresses <- sub("\n", "", addresses)
+addresses <- data.frame(addresses)
+
+## Create a second column for addresses (used in full crime log)
+crimelog_today <- mutate(crimelog_today, Addresses_Short = crimelog_today$Location)
+
+## Geocode the addresses
+lat_long <- addresses %>% 
+  geocode(addresses, method = 'osm', lat = latitude, long = longitude)
+lat_long <- data.frame(lat_long)
+crimelog_today <- mutate(crimelog_today, Latitude = lat_long$latitude,
+                         Longitude = lat_long$longitude)
+
+## Append today's data to TTN's full crime log 
+crimelog_full <- read_csv("crimelog_full.csv")
+crimelog_full <- rbind(crimelog_today, crimelog_full)
+crimelog_full <- crimelog_full %>% 
+  distinct(Incident_Number, .keep_all = TRUE)
+
+## Clean second column of addresses in full crime log (make it just street address)
+crimelog_full$Addresses_Short <- crimelog_full$Location
+for (i in 1:nrow(crimelog_full)) {
+  crimelog_full[i, "Addresses_Short"] <- str_sub(crimelog_full[i, "Addresses_Short"], 1, nchar(crimelog_full[i, "Addresses_Short"])-34)
+}
+
+## Fix the latitude and longitude for the incidents that R geocoded wrong
+for(i in 1:nrow(crimelog_full)) {
+  if(is.na(crimelog_full[i,2]) == TRUE) {
+    crimelog_full[i,2] = '-'
+  }
+}
+
+for(i in 1:nrow(crimelog_full)) {
+  if (str_detect("21-002886", crimelog_full[i, 2]) == TRUE) {
+    crimelog_full[i, "Latitude"] <- as.numeric(sub(39.98162, 39.98373, crimelog_full[i, "Latitude"]))
+    crimelog_full[i, "Longitude"] <- as.numeric(sub(-75.13280, -75.14992, crimelog_full[i, "Longitude"]))
+  }}
+
+for(i in 1:nrow(crimelog_full)) {
+  if(str_detect("21-002981", crimelog_full[i, 2]) == TRUE) {
+    crimelog_full[i, "Latitude"] <- as.numeric(sub(39.97340, 39.97434, crimelog_full[i, "Latitude"]))
+    crimelog_full[i, "Longitude"] <- as.numeric(sub(-75.15138, -75.15768, crimelog_full[i, "Longitude"]))
+  }}
+
+## Export updated version of full crime log
+write_csv(crimelog_full, "crimelog_full.csv")
+```
+# Create map of crime incidents
+``` {r}
+## Prepare coordinates for patrol border
+patrol_lat <- c(39.98735036816927, 39.976802224353534, 39.976003290901424, 39.97162506760556, 39.97130031274797, 39.97575245658425, 39.97493865873836, 39.98537711065844, 39.98735036816927)
+patrol_long <- c(-75.16261200192652, -75.16491548846739, -75.15850768846742, -75.15942964425508, -75.15727583750909, -75.15633858846746, -75.15007015963126, -75.14771538658265, -75.16261200192652)
+CSSpatrol_border <- data.frame(patrol_lat, patrol_long)
+
+## Prepare labels for map
+labs <- lapply(seq(nrow(crimelog_full)), function(i) {
+  paste0(crimelog_full[i, "Classification"], '<br />', 
+         crimelog_full[i, "DateTime_Reported"], '<br />',
+         crimelog_full[i, "Addresses_Short"]) })
+
+## Create map
+incident_map <- leaflet(crimelog_full) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatter) %>% 
+  addPolylines(lat = CSSpatrol_border$patrol_lat, lng = CSSpatrol_border$patrol_long, color = "#FFEBBD", weight = 1, opacity = .35) %>% 
+  addCircleMarkers(lng = ~Longitude, lat = ~Latitude, label = lapply(labs, htmltools::HTML), color = "#E10020", 
+                   radius = 6, stroke = FALSE, fillOpacity = .65, 
+                   clusterOptions = markerClusterOptions(freezeAtZoom = 17, iconCreateFunction=JS("function (cluster) {    
+    var childCount = cluster.getChildCount(); 
+    var c = ' marker-cluster-';  
+    if (childCount < 1000) {  
+      c += 'large';  
+    }  
+    return new L.DivIcon({ html: '<div><span>' + childCount + '</span></div>', className: 'marker-cluster' + c, iconSize: new L.Point(40, 40) });
+  }"))) %>% 
+  addLegend("bottomright", 
+            colors = c("#E10020", "#ff7f00", "#FFEBBD"),
+            labels = c("Incident", "Multiple Incidents (click to view)", 
+                       "Campus Safety Services patrol border"),
+            opacity = .9) %>% 
+  setView(-75.15767818843477, 39.98045295969112, zoom = 15)
+saveWidget(incident_map, file="incident_map.html")
+```

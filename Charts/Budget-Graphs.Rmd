@@ -1,0 +1,152 @@
+---
+title: "Budget Graphs"
+author: "Amelia Winger"
+date: "6/29/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Call libraries
+```{r, include=FALSE}
+library(tidyverse)
+library(dplyr)
+library(plotly)
+library(htmlwidgets)
+```
+#Create first plot to show excess revenue over expenses per fiscal year
+```{r}
+#Import data
+excess_rev <- read_csv("ExcessRev.csv")
+
+#Create plot
+plot1 <- excess_rev %>% 
+  plot_ly(x = ~FY, y = ~Profit, type = "bar",
+          hoverinfo='text',
+          text = ~paste('</br> Fiscal Year:', FY,
+                        '</br> Net Income:', FormattedProfit),
+          marker= list(color='#9D2235', opacity=.8))
+#Format plot
+plot1 <- plot1 %>% 
+  layout(title = list(text="<b>Temple University's Net Income per Fiscal Year</b><br>Profit is defined as excess revenue over expenses each fiscal year.</br>"),
+         xaxis = list(title = list(text = "Fiscal Year",
+                                   yshift=20),
+                      showticklabels=FALSE), 
+         yaxis = list(title = list(text = "Excess Revenue Over Expenses (in dollars)",
+                                   standoff=20L),
+                      zeroline = TRUE,
+                      showline = TRUE,
+                      zerolinecolor = toRGB("black"),
+                      zerolinewidth = 2.5,
+                      range = c(-50000000, 200000000)),
+         margin = list(l=50, r=50,t=100, b=25, pad=2)) %>% 
+  add_annotations(text=excess_rev$FY,
+                  showarrow = FALSE,
+                  yshift=c(10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, -10))
+#Add source attribution
+excessrev_plot <- plot1 %>% 
+  layout(margin = list(b=160), 
+         annotations = 
+           list(x = 1, y = -.2,
+                text = "Source: Temple University Audited Financial Statements 2009-2020", 
+                showarrow = F, xref='paper', yref='paper', 
+                xanchor='right', yanchor='auto', xshift=0, yshift=-30,
+                font=list(size=15, color="black")))
+```
+#Create second plot to show increase in tuition per academic year
+```{r}
+#Import data
+tuition <- read_csv("tuition.csv")
+
+#Create plot
+plot2 <- tuition %>% 
+  plot_ly(x= ~Year, y= ~InState, type="scatter", mode="lines+markers",
+          name= "In-State Tuition",
+          hoverinfo='text',
+          text= ~paste('</br> Academic Year:', Year,
+                       '</br> In-State Tuition:', InState_Formatted,
+                       '</br> Out-of-State Tuition:', OutofState_Formatted),
+          line= list(color='#9D2235', opacity=.8),
+          marker= list(color='#9D2235', opacity=.8))
+#Add top trace
+plot2 <- plot2 %>% 
+  add_trace(y= ~OutofState, mode="lines+markers",
+            name= "Out-of-State Tuition",
+            hoverinfo='text',
+            text= ~paste('</br> Academic Year:', Year,
+                         '</br> In-State Tuition:', InState_Formatted,
+                         '</br> Out-of-State Tuition:', OutofState_Formatted),
+            marker= list(color='#5b8391'),
+            line= list(color='#5b8391'))
+#Format plot
+plot2 <- plot2 %>% 
+  layout(title = list(text="<b>Temple University's Tuition Prices 2003-2021</b><br>Academic years are defined by their end date.</br>"),
+         xaxis = list(title = list(text = "Academic Year",
+                                   yshift=20),
+                      zeroline = TRUE,
+                      showline = TRUE,
+                      showspikes=T,
+                      spikethickness=2,
+                      spikedash="dot",
+                      spikecolor="#999999",
+                      spikemode="across",
+                      range = c(2003, 2022)),
+         yaxis = list(title = list(text = "Tuition Price",
+                                   standoff=20L),
+                      tickprefix="$",
+                      zeroline = TRUE,
+                      showline = TRUE),
+         margin = list(l=50, r=50,t=100, b=25, pad=2),
+         legend= list(traceorder='normal'))
+#Add source attribution
+tuition_plot <- plot2 %>% 
+  layout(margin = list(b=160), 
+         annotations = 
+           list(x = 1, y = -.2,
+                text = "Source: Temple University 'At a Glance' Guides 2014-2021, Temple University Common Data Sets 2003-2013", 
+                showarrow = F, xref='paper', yref='paper', 
+                xanchor='right', yanchor='auto', xshift=10, yshift=-30,
+                font=list(size=15, color="black")))
+```
+#Create third plot to show proposed budget size per fiscal year
+```{r}
+#Import data
+budgetsize <- read_csv("BudgetSize.csv")
+
+#Create plot
+plot3 <- budgetsize %>% 
+  plot_ly(x = ~FY, y = ~Budget, type = "bar",
+          hoverinfo='text',
+          text=~paste('</br> Fiscal Year:', FY,
+                      '</br> Budget Size:', FormattedBudget),
+          marker=list(color='#9D2235', opacity=.8))
+#Format plot
+plot3 <- plot3 %>% 
+  layout(title = list(text="<b>Temple University's Budget Size per Fiscal Year</b><br>Budget size is defined as the proposed revenue per fiscal year.</br>"),
+         xaxis = list(title = list(text = "Fiscal Year",
+                                   yshift=20),
+                      showticklabels=FALSE),
+         yaxis = list(title = list(text = "Budget Size",
+                                   standoff=20L),
+                      tickprefix="$"),
+         margin = list(l=50, r=50,t=100, b=25, pad=2)) %>%
+  add_annotations(text=budgetsize$FY,
+                  showarrow = FALSE,
+                  yshift=10)
+#Add source attribution
+budgetsize_plot <- plot3 %>% 
+  layout(margin = list(b=160), 
+         annotations = 
+           list(x = 1, y = -.2,
+                text = "Source: Temple University 'At a Glance' Guides 2014-2021", 
+                showarrow = F, xref='paper', yref='paper', 
+                xanchor='right', yanchor='auto', xshift=0, yshift=-30,
+                font=list(size=15, color="black")))
+```
+#Export plots
+```{r}
+saveWidget(excessrev_plot, file="excessRev.html")
+saveWidget(tuition_plot, file="tuition.html")
+saveWidget(budgetsize_plot, file="budgetSize.html")
+```
